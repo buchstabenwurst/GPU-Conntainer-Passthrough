@@ -1,6 +1,6 @@
 source <(wget -qO- https://bash-tui-toolkit.timo-reymann.de/latest/bundle.bash)
 
-DRIVER=NVIDIA-Linux-x86_64-595.84.run
+DRIVER=NVIDIA-Linux-x86_64-595.80.run
 DRIVER_DOWNLOAD=https://download.nvidia.com/XFree86/Linux-x86_64/595.84/$DRIVER
 MAJOR_DEVICE_TYPE_GPU=$(stat -c '%Hr' /dev/nvidia0)
 MAJOR_DEVICE_TYPE_UVM=$(stat -c '%Hr' /dev/nvidia-uvm)
@@ -13,8 +13,11 @@ display_help() {
     echo "Usage: $0 [-id ctid]" >&2
     echo
     echo "   -h, --help                 Show this message"
-    echo "   -id                        Container ID to passthrough to"
+    echo "   -id <ctid>                 Container ID to passthrough to"
     echo "   -s, --shell                Disable the TUI. Use this when offline"
+    echo "   --patch-nvenc              Download and apply patches for nvenc from https://github.com/keylase/nvidia-patch"
+    echo "   --patch-nvfbc              Download and apply patches for nvfbc from https://github.com/keylase/nvidia-patch"
+    echo "   --patch-nvenc-nvfbc        Patch both nvenc and nvfbc"
     echo
     # echo some stuff here for the -a or --add-options 
     exit 1
@@ -23,8 +26,12 @@ display_help() {
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -h|--help) display_help; shift ;;
-        -id) CTIDs=($2); shift ;;
+        -id) CTIDs=$2; shift 2;;
         -s|--shell) TUI=0; shift;;
+        --patch-nvenc) selected_patches=1; shift;;
+        --patch-nvfbc) selected_patches=2; shift;;
+        --patch-nvenc-nvfbc) selected_patches=3; shift;;
+
         # ... (same format for other required arguments)
         *) echo "Unknown parameter passed: $1" ;;
     esac
@@ -36,6 +43,7 @@ done
 if [ $TUI == 1 ] ; then
   IFS=$'\n' read -r -d '' -a LIST_IDS <<< $IDs
   IFS=$'\n' read -r -d '' -a LIST_NAMES <<< $(pct list | sed '1d'| tr -s ' ' | cut -d " " -f 1,3)
+  patches=("None" "NVENC patch" "NVFBC patch" "Both")
 
   IFS=$' ' read -r -d '' -a checked <<< $(checkbox "Select one or more items" "${LIST_NAMES[@]}")
 
@@ -45,14 +53,18 @@ if [ $TUI == 1 ] ; then
     CTIDs+=(${LIST_IDS[$i]})
   done
 
+  selected_patches=$(list "Install patches from https://github.com/keylase/nvidia-patch?" "${patches[@]}")
 fi
+
+
+#### Container ####
 
 for CTID in ${CTIDs[@]}
 do
 
   if [ $(echo $IDs | grep -c $CTID) -gt 0 ]
   then
-    echo "Container: ${CTID}"
+    echo "Installing in Container: ${CTID}"
   else
     echo "invalid container $CTID"
     exit
@@ -84,5 +96,42 @@ do
   echo -e "\e[0;96mInstalling driver in container\e[0m"
   pct exec $CTID -- bash -c "chmod +x /opt/nvidia/$DRIVER && \
   /opt/nvidia/$DRIVER --no-kernel-module --no-questions --ui=none"
+  #### Container Patches ####
+  if [[ $selected_patches -gt 0 ]]
+    then
+    echo -e "\e[0;96mDownloading Patches\e[0m"
+    pct exec $CTID -- bash -c "git clone https://github.com/keylase/nvidia-patch /opt/nvidia/nvidia-patch"
+    if [[ $selected_patches == 1 ]] # NVENC patch
+    then
+      pct exec $CTID -- bash -c "bash /opt/nvidia/nvidia-patch/patch.sh"
+    elif [[ $selected_patches == 2 ]] # NVFBC patch
+    then
+      pct exec $CTID -- bash -c "bash /opt/nvidia/nvidia-patch/patch-fbc.sh"
+    else # Both
+      pct exec $CTID -- bash -c "bash /opt/nvidia/nvidia-patch/patch.sh"
+      pct exec $CTID -- bash -c "bash /opt/nvidia/nvidia-patch/patch-fbc.sh"
+    fi
+  fi
+  echo -e "\e[0;96mRebooting the container\e[0m"
+  pct reboot $CTID
   echo -e "\e[0;96mDone! run nvidia-smi inside the container to test\e[0m"
+
 done
+
+#### Host Patches ####
+if [[ $selected_patches -gt 0 ]]
+  then
+  echo -e "\e[0;96mDownloading Patches\e[0m"
+  git clone https://github.com/keylase/nvidia-patch /opt/nvidia/nvidia-patch
+  if [[ $selected_patches == 1 ]] # NVENC patch
+  then
+    bash /opt/nvidia/nvidia-patch/patch.sh
+  elif [[ $selected_patches == 2 ]] # NVFBC patch
+  then
+    bash /opt/nvidia/nvidia-patch/patch-fbc.sh
+  else # Both
+    bash /opt/nvidia/nvidia-patch/patch.sh
+    bash /opt/nvidia/nvidia-patch/patch-fbc.sh
+  fi
+
+fi
