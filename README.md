@@ -6,7 +6,7 @@ Interactive
 bash ./GPU-Conntainer-Passthrough.sh
 ```
 
-Automated
+Automated (Currently broken)
 ```
 bash ./GPU-Conntainer-Passthrough.sh -s -id <container id>
 ```
