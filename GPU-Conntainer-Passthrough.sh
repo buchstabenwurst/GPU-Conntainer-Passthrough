@@ -19,7 +19,7 @@ display_help() {
     echo "   --patch-nvenc              Download and apply patches for nvenc from https://github.com/keylase/nvidia-patch"
     echo "   --patch-nvfbc              Download and apply patches for nvfbc from https://github.com/keylase/nvidia-patch"
     echo "   --patch-nvenc-nvfbc        Patch both nvenc and nvfbc"
-    echo "   -r, --remove, --uninstall  Uninstall the Driver[TODO]"
+    echo "   -r, --remove, --uninstall  Uninstall the Driver"
     echo
     # echo some stuff here for the -a or --add-options 
     exit 1
